@@ -36,7 +36,15 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
     loss_fn = nn.MSELoss()
     
     # Load dataset
-    train_dataset = RoadDataset('drive_data/train')
+    data_path = 'drive_data/train'
+    if not __file__.startswith('/content'):  # Local machine
+        data_path = 'drive_data/train'
+    else:  # Colab
+        import os
+        os.chdir('/content/online_deep_leaning_hw4')
+        data_path = 'drive_data/train'
+    
+    train_dataset = RoadDataset(data_path)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
     # Training loop
