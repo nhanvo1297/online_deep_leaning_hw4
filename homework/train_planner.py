@@ -35,16 +35,29 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
     
-    # Load dataset
-    data_path = 'drive_data/train'
-    if not __file__.startswith('/content'):  # Local machine
-        data_path = 'drive_data/train'
-    else:  # Colab
-        import os
-        os.chdir('/content/online_deep_leaning_hw4')
-        data_path = 'drive_data/train'
+    # Load dataset - all episodes
+    import os
+    from torch.utils.data import ConcatDataset
     
-    train_dataset = RoadDataset(data_path)
+    data_dir = 'drive_data/train'
+    
+    # Get all episode folders
+    episodes = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+    print(f"Found {len(episodes)} episodes")
+    
+    # Load each episode
+    datasets = []
+    for episode in sorted(episodes):
+        episode_path = os.path.join(data_dir, episode)
+        try:
+            dataset = RoadDataset(episode_path)
+            datasets.append(dataset)
+        except Exception as e:
+            print(f"Warning: Failed to load {episode}: {e}")
+    
+    # Combine all episodes
+    train_dataset = ConcatDataset(datasets)
+    print(f"Total samples: {len(train_dataset)}")
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
     # Training loop
