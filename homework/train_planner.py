@@ -79,7 +79,7 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
     
     # Training loop
     best_lat_error = float('inf')
-    patience = 15
+    patience = 30
     no_improve_count = 0
     
     for epoch in range(epochs):
