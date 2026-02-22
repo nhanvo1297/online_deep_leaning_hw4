@@ -28,7 +28,9 @@ class MLPPlanner(nn.Module):
         output_size = n_waypoints * 2
         
         self.mlp = nn.Sequential(
-            nn.Linear(input_size, 256),
+            nn.Linear(input_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -129,7 +131,7 @@ class TransformerPlanner(nn.Module):
             memory=encoded_tracks,
         )
         waypoints = self.waypoint_head(output)
-        
+
         return waypoints
 
 
