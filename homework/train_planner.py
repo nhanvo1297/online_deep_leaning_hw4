@@ -78,6 +78,10 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
     print(f"Validation samples: {len(val_dataset)}")
     
     # Training loop
+    best_lat_error = float('inf')
+    patience = 15
+    no_improve_count = 0
+    
     for epoch in range(epochs):
         # Training phase
         model.train()
@@ -94,6 +98,7 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             
             total_loss += loss.item()
@@ -114,9 +119,23 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
                 metrics.add(pred, waypoints, waypoints_mask)
         
         results = metrics.compute()
+        lat_err = results["lateral_error"]
+        
         print(f'Epoch {epoch+1}/{epochs} | Loss: {avg_train_loss:.4f} | '
               f'Long.Err: {results["longitudinal_error"]:.4f} | '
-              f'Lat.Err: {results["lateral_error"]:.4f}')
+              f'Lat.Err: {lat_err:.4f}')
+        
+        # Early stopping
+        if lat_err < best_lat_error:
+            best_lat_error = lat_err
+            no_improve_count = 0
+            save_model(model)
+            print(f"  ✓ Best model saved! Lat.Err: {lat_err:.4f}")
+        else:
+            no_improve_count += 1
+            if no_improve_count >= patience:
+                print(f"Early stopping at epoch {epoch+1} (no improvement for {patience} epochs)")
+                break
     
     # Save model
     save_model(model)
