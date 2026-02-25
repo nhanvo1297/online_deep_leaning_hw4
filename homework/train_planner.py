@@ -104,7 +104,11 @@ def train(model_name, epochs=20, batch_size=32, lr=0.001):
                 track_left = batch['track_left'].to(device)
                 track_right = batch['track_right'].to(device)
                 pred = model(track_left, track_right)
-            loss = loss_fn(pred, waypoints)
+            # Calculate loss (use model's custom loss if available)
+            if hasattr(model, 'compute_loss'):
+                loss = model.compute_loss(pred, waypoints)
+            else:
+                loss = loss_fn(pred, waypoints)
             
             # Backward pass
             optimizer.zero_grad()

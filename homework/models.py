@@ -197,6 +197,9 @@ class CNNPlanner(torch.nn.Module):
 
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
+        
+        # Loss weights: prioritize longitudinal error [1.5, 1.0]
+        self.register_buffer("loss_weights", torch.tensor([1.5, 1.0]), persistent=False)
 
         # CNN backbone: input (B, 3, 96, 128) -> features
         self.backbone = nn.Sequential(
@@ -257,7 +260,12 @@ class CNNPlanner(torch.nn.Module):
         )
         
         # Separate heads for longitudinal and lateral predictions
-        self.lon_head = nn.Linear(128, n_waypoints)
+        self.lon_head = nn.Sequential(
+            nn.Linear(128, 128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(128, n_waypoints),
+        )
         self.lat_head = nn.Sequential(
             nn.Linear(128, 128),
             nn.ReLU(inplace=True),
@@ -294,6 +302,21 @@ class CNNPlanner(torch.nn.Module):
         waypoints = torch.stack([lon_pred, lat_pred], dim=2)  # (B, n_waypoints, 2)
         
         return waypoints
+    
+    def compute_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Compute weighted MSE loss, emphasizing longitudinal error.
+        
+        Args:
+            pred (torch.Tensor): predicted waypoints (B, n_waypoints, 2)
+            target (torch.Tensor): target waypoints (B, n_waypoints, 2)
+        
+        Returns:
+            torch.Tensor: weighted MSE loss
+        """
+        mse = (pred - target) ** 2  # (B, n_waypoints, 2)
+        weighted_mse = mse * self.loss_weights.unsqueeze(0).unsqueeze(0)
+        return weighted_mse.mean()
 
 
 MODEL_FACTORY = {
