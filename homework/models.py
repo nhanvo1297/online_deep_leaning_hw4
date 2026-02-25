@@ -198,78 +198,83 @@ class CNNPlanner(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
         
-        # Loss weights: prioritize longitudinal error [1.5, 1.0]
-        self.register_buffer("loss_weights", torch.tensor([1.5, 1.0]), persistent=False)
+        # Loss weights: strongly prioritize longitudinal error [2.5, 1.0]
+        self.register_buffer("loss_weights", torch.tensor([2.5, 1.0]), persistent=False)
 
-        # CNN backbone: input (B, 3, 96, 128) -> features
-        self.backbone = nn.Sequential(
-            # Block 1: 3 -> 64 channels (increased capacity)
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+        # More powerful CNN backbone with residual-like architecture
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # (B, 64, 48, 64)
-            
-            # Block 2: 64 -> 128 channels
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+        )  # (B, 64, 48, 64)
+        
+        # Block 1
+        self.block1 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # (B, 128, 24, 32)
-            
-            # Block 3: 128 -> 256 channels
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # (B, 256, 12, 16)
-            
-            # Block 4: 256 -> 256 channels
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # (B, 256, 6, 8)
-            
-            # Adaptive pooling to flatten to fixed size
-            nn.AdaptiveAvgPool2d((1, 1))  # (B, 256, 1, 1)
-        )
+        )  # (B, 128, 24, 32)
         
-        # Dense layers for feature processing (increased capacity)
+        # Block 2
+        self.block2 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )  # (B, 256, 12, 16)
+        
+        # Block 3
+        self.block3 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+        )  # (B, 512, 6, 8)
+        
+        # Global average pooling
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Dense layers with higher capacity
         self.dense = nn.Sequential(
-            nn.Linear(256, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(512, 1024),
+            nn.BatchNorm1d(1024),
             nn.ReLU(inplace=True),
             nn.Dropout(0.5),
+            
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.4),
+            
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.4),
+            nn.Dropout(0.3),
         )
         
-        # Separate heads for longitudinal and lateral predictions
+        # Separate heads with deeper networks
         self.lon_head = nn.Sequential(
-            nn.Linear(128, 128),
+            nn.Linear(256, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.ReLU(inplace=True),
             nn.Linear(128, n_waypoints),
         )
+        
         self.lat_head = nn.Sequential(
-            nn.Linear(128, 128),
+            nn.Linear(256, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.ReLU(inplace=True),
             nn.Linear(128, n_waypoints),
         )
 
@@ -285,14 +290,22 @@ class CNNPlanner(torch.nn.Module):
         x = image
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
         
-        # CNN backbone
-        x = self.backbone(x)  # (B, 256, 1, 1)
+        # Initial conv
+        x = self.conv1(x)
+        
+        # Residual blocks
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        
+        # Global pooling
+        x = self.global_pool(x)  # (B, 512, 1, 1)
         
         # Flatten
-        x = x.view(x.shape[0], -1)  # (B, 256)
+        x = x.view(x.shape[0], -1)  # (B, 512)
         
         # Dense layers
-        x = self.dense(x)  # (B, 128)
+        x = self.dense(x)  # (B, 256)
         
         # Separate heads for lon and lat
         lon_pred = self.lon_head(x)  # (B, n_waypoints)
