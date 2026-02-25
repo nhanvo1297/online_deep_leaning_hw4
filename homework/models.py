@@ -230,51 +230,47 @@ class CNNPlanner(torch.nn.Module):
         
         # Block 3
         self.block3 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(256, 384, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(384),
             nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(384),
             nn.ReLU(inplace=True),
-        )  # (B, 512, 6, 8)
+        )  # (B, 384, 6, 8)
         
         # Global average pooling
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         
-        # Dense layers with higher capacity
+        # Dense layers with reduced capacity
         self.dense = nn.Sequential(
-            nn.Linear(512, 1024),
-            nn.BatchNorm1d(1024),
+            nn.Linear(384, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Dropout(0.5),
             
-            nn.Linear(1024, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
             
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
         )
         
         # Separate heads with deeper networks
         self.lon_head = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
             nn.Linear(128, n_waypoints),
         )
         
         self.lat_head = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
             nn.Linear(128, n_waypoints),
         )
 
@@ -299,13 +295,13 @@ class CNNPlanner(torch.nn.Module):
         x = self.block3(x)
         
         # Global pooling
-        x = self.global_pool(x)  # (B, 512, 1, 1)
+        x = self.global_pool(x)  # (B, 384, 1, 1)
         
         # Flatten
-        x = x.view(x.shape[0], -1)  # (B, 512)
+        x = x.view(x.shape[0], -1)  # (B, 384)
         
         # Dense layers
-        x = self.dense(x)  # (B, 256)
+        x = self.dense(x)  # (B, 128)
         
         # Separate heads for lon and lat
         lon_pred = self.lon_head(x)  # (B, n_waypoints)
