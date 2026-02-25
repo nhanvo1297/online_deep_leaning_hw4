@@ -199,7 +199,7 @@ class CNNPlanner(torch.nn.Module):
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
         
         # Loss weights: strongly prioritize longitudinal error [2.5, 1.0]
-        self.register_buffer("loss_weights", torch.tensor([2.5, 1.0]), persistent=False)
+        self.loss_weights = torch.tensor([2.5, 1.0])
 
         # More powerful CNN backbone with residual-like architecture
         self.conv1 = nn.Sequential(
