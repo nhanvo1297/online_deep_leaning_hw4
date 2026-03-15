@@ -1,3 +1,4 @@
+"""I have used Gitlab Copilot for assistance"""
 """
 Usage:
     python3 -m homework.train_planner --your_args here
